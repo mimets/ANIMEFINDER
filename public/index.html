@@ -1,1 +1,534 @@
-﻿__INDEX_HTML__
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Anime Hub</title>
+  <style>
+    :root{
+      --bg1:#070a14; --bg2:#0e1634;
+      --card: rgba(255,255,255,.07);
+      --stroke: rgba(255,255,255,.12);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.68);
+      --shadow: 0 22px 60px rgba(0,0,0,.45);
+      --r: 18px;
+      --a1:#7c5cff; --a2:#29d3ff; --a3:#41d48a;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color:var(--text);
+      background:
+        radial-gradient(1000px 600px at 14% 10%, rgba(124,92,255,.33), transparent 60%),
+        radial-gradient(900px 550px at 86% 0%, rgba(41,211,255,.22), transparent 55%),
+        radial-gradient(900px 650px at 60% 95%, rgba(65,212,138,.16), transparent 55%),
+        linear-gradient(160deg, var(--bg1), var(--bg2));
+      overflow-x:hidden;
+    }
+    .wrap{ max-width:1120px; margin:0 auto; padding:26px 18px 40px; }
+
+    .top{
+      display:flex; align-items:center; justify-content:space-between; gap:14px;
+      margin-bottom:14px;
+    }
+    .brand{ display:flex; align-items:center; gap:12px; }
+    .logo{
+      width:42px;height:42px;border-radius:14px;
+      background: linear-gradient(135deg, rgba(124,92,255,.92), rgba(41,211,255,.80));
+      box-shadow: 0 18px 40px rgba(124,92,255,.18);
+      position:relative; overflow:hidden;
+    }
+    .logo::after{ content:""; position:absolute; inset:-18px; background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.55), transparent 35%); transform: rotate(18deg); }
+    h1{ font-size:18px; margin:0; letter-spacing:.2px; }
+    .sub{ font-size:12px; color:var(--muted); margin-top:2px; }
+
+    .panel{
+      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+      border:1px solid var(--stroke);
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      overflow: visible;
+    }
+
+    .search{
+      display:flex; gap:12px; align-items:center;
+      padding:14px;
+      position:relative;
+      z-index:1000;
+    }
+    .in{
+      flex:1;
+      display:flex; gap:10px; align-items:center;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.18);
+    }
+    input{
+      width:100%;
+      border:0;
+      outline:0;
+      background:transparent;
+      color:var(--text);
+      font-size:14px;
+    }
+    .btn{
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      padding:11px 12px;
+      border-radius:14px;
+      cursor:pointer;
+      font-weight:800;
+      font-size:13px;
+      white-space:nowrap;
+      transition: transform .08s ease, background .2s ease;
+      user-select:none;
+    }
+    .btn:hover{ background: rgba(255,255,255,.12); }
+    .btn:active{ transform: scale(.98); }
+    .btn.primary{ border-color: rgba(124,92,255,.45); background: linear-gradient(135deg, rgba(124,92,255,.30), rgba(41,211,255,.16)); }
+    .btn.ok{ border-color: rgba(65,212,138,.42); background: linear-gradient(135deg, rgba(65,212,138,.26), rgba(41,211,255,.10)); }
+    .btn.warn{ border-color: rgba(255,107,107,.35); background: linear-gradient(135deg, rgba(255,107,107,.18), rgba(124,92,255,.10)); }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .suggest{
+      position:absolute; left:14px; right:14px; top:calc(100% - 6px);
+      z-index:2000;
+      border-radius:14px;
+      overflow:hidden;
+      display:none;
+    }
+    .suggest .item{
+      padding:10px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      cursor:pointer;
+      border-top:1px solid rgba(255,255,255,.08);
+      background: rgba(10,14,28,.78);
+      backdrop-filter: blur(14px);
+    }
+    .suggest .item:hover{ background: rgba(255,255,255,.10); }
+    .mini{
+      display:flex; gap:10px; align-items:center; min-width:0;
+    }
+    .miniPoster{
+      width:34px; height:48px; border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.22);
+      object-fit:cover;
+      flex:0 0 auto;
+    }
+    .tag{
+      font-size:11px;
+      color: rgba(255,255,255,.76);
+      border:1px solid rgba(255,255,255,.14);
+      padding:2px 8px;
+      border-radius:999px;
+      background: rgba(255,255,255,.06);
+      flex:0 0 auto;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 340px 1fr;
+      gap:16px;
+      margin-top:16px;
+      position:relative;
+      z-index:1;
+    }
+    @media (max-width: 940px){
+      .top{ flex-direction:column; align-items:flex-start; }
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    .card{ padding:14px; }
+    .poster{
+      width:100%;
+      aspect-ratio: 2/3;
+      border-radius:16px;
+      background: rgba(0,0,0,.22);
+      border:1px solid rgba(255,255,255,.10);
+      overflow:hidden;
+    }
+    .poster img{ width:100%; height:100%; object-fit:cover; display:block; }
+
+    .pills{ margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; }
+    .pill{
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      font-size:12px;
+      color: rgba(255,255,255,.78);
+    }
+    .pill strong{ color: var(--text); }
+
+    .leftActions{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+
+    .status{ margin-top:10px; font-size:12px; color: rgba(255,255,255,.70); }
+
+    .content h2{ margin:0; font-size:20px; }
+    .content p{ margin:10px 0 0; color: var(--muted); line-height:1.45; font-size:13.5px; }
+
+    .video{
+      margin-top:14px;
+      border-radius:18px;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.22);
+      box-shadow: 0 18px 55px rgba(0,0,0,.28);
+    }
+    .video iframe{ width:100%; aspect-ratio: 16/9; border:0; display:block; }
+
+    .split{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-top:16px; }
+    @media (max-width: 940px){ .split{ grid-template-columns: 1fr; } }
+
+    .sectionTitle{ margin:0 0 8px; font-size:13px; color: rgba(255,255,255,.86); letter-spacing:.2px; }
+
+    .aiBox{
+      padding:12px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.14);
+    }
+    .aiGrid{
+      display:grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap:12px;
+      margin-top:10px;
+    }
+    @media (max-width: 940px){ .aiGrid{ grid-template-columns: 1fr; } }
+
+    .aiCol{
+      padding:10px 10px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+    }
+    .aiCol h3{ margin:0 0 8px; font-size:12.5px; }
+    .aiCol ul{ margin:0; padding-left:18px; color: rgba(255,255,255,.75); font-size:13px; line-height:1.35; }
+
+    .sources a{ color: rgba(180,210,255,.92); text-decoration:none; word-break: break-all; }
+    .sources a:hover{ text-decoration:underline; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <h1>Anime Hub</h1>
+          <div class="sub">TMDB (dettagli) • YouTube (trailer) • AI (recensioni web)</div>
+        </div>
+      </div>
+      <div class="sub" id="hint">Suggerimenti sotto la barra.</div>
+    </div>
+
+    <div class="panel search">
+      <div class="in">
+        <span style="opacity:.7">🔎</span>
+        <input id="q" placeholder="Cerca un anime..." autocomplete="off" />
+      </div>
+      <button class="btn primary" id="btnSearch">Cerca</button>
+      <button class="btn ok" id="btnAI">Analizza con AI</button>
+      <div class="suggest panel" id="suggest"></div>
+    </div>
+
+    <div class="grid">
+      <div class="panel card">
+        <div class="poster" id="poster"><div class="status" style="padding:12px">Cerca un titolo.</div></div>
+
+        <div class="pills">
+          <div class="pill">Tipo: <strong id="type">—</strong></div>
+          <div class="pill">Voto: <strong id="vote">—</strong></div>
+        </div>
+
+        <!-- Pulsanti a sinistra (come prima) -->
+        <div class="leftActions">
+          <button class="btn" id="btnCR" disabled>Guarda su Crunchyroll</button>
+          <button class="btn" id="btnContinue">Continua a guardare</button>
+          <button class="btn warn" id="btnSetCR" disabled>Imposta link CR</button>
+        </div>
+
+        <div class="status" id="status">Pronto.</div>
+      </div>
+
+      <div class="panel card content">
+        <h2 id="title">—</h2>
+        <p id="overview">Dettagli da TMDB, trailer da YouTube, pro/contro da Perplexity (web).</p>
+
+        <div class="video" id="videoBox" style="display:none">
+          <iframe id="ytFrame" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+
+        <div class="split">
+          <div class="panel card" style="box-shadow:none">
+            <div class="sectionTitle">Analisi AI</div>
+            <div class="aiBox">
+              <div id="aiSummary" style="color:rgba(255,255,255,.78); font-size:13px; line-height:1.42;">Premi “Analizza con AI”.</div>
+
+              <div class="aiGrid">
+                <div class="aiCol">
+                  <h3>Pro</h3>
+                  <ul id="aiPros"></ul>
+                </div>
+                <div class="aiCol">
+                  <h3>Contro</h3>
+                  <ul id="aiCons"></ul>
+                </div>
+                <div class="aiCol">
+                  <h3>Media</h3>
+                  <div class="pill" style="display:inline-block; margin-top:2px"><strong id="aiAvg">—</strong> / 10</div>
+                </div>
+              </div>
+
+              <div class="status sources" id="aiSources" style="margin-top:10px;"></div>
+            </div>
+          </div>
+
+          <div class="panel card" style="box-shadow:none">
+            <div class="sectionTitle">Fonti</div>
+            <div class="status">Le fonti sono URL trovati dall’AI sul web.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const el = (id) => document.getElementById(id);
+  const state = { current: null };
+
+  function setStatus(msg){ el("status").textContent = msg; }
+  function escapeHtml(str){
+    return String(str || "")
+      .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+  function tmdbImg(p){ return p ? `https://image.tmdb.org/t/p/w500${p}` : null; }
+
+  async function apiGet(url){
+    const r = await fetch(url);
+    const data = await r.json().catch(()=> ({}));
+    if(!r.ok) throw new Error(data.error || "Request failed");
+    return data;
+  }
+  async function apiPost(url, body){
+    const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+    const data = await r.json().catch(()=> ({}));
+    if(!r.ok) throw new Error(data.error || "Request failed");
+    return data;
+  }
+
+  // Suggestions (TMDB)
+  const suggestBox = el("suggest");
+  let suggestTimer = null;
+
+  function showSuggestions(items){
+    if(!items?.length){
+      suggestBox.style.display="none";
+      suggestBox.innerHTML="";
+      return;
+    }
+    suggestBox.style.display="block";
+    suggestBox.innerHTML = items.map((it, idx) => {
+      const img = tmdbImg(it.poster_path);
+      return `
+        <div class="item" data-idx="${idx}">
+          <div class="mini">
+            ${img ? `<img class="miniPoster" src="${img}" alt="">` : `<div class="miniPoster"></div>`}
+            <div style="min-width:0">
+              <div style="font-weight:850; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(it.name)}</div>
+              <div style="font-size:12px; color:rgba(255,255,255,.62); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((it.overview || "Nessuna descrizione.").slice(0, 90))}</div>
+            </div>
+          </div>
+          <div class="tag">${escapeHtml(it.type)}</div>
+        </div>
+      `;
+    }).join("");
+
+    [...suggestBox.querySelectorAll(".item")].forEach(node => {
+      node.addEventListener("click", async () => {
+        const picked = items[Number(node.dataset.idx)];
+        suggestBox.style.display = "none";
+        el("q").value = picked.name;
+        await runFullSearch(picked.name);
+      });
+    });
+  }
+
+  el("q").addEventListener("input", () => {
+    clearTimeout(suggestTimer);
+    const q = el("q").value.trim();
+    if(q.length < 2){ showSuggestions([]); return; }
+    suggestTimer = setTimeout(async () => {
+      try{
+        const j = await apiGet(`/api/tmdb/autocomplete?q=${encodeURIComponent(q)}`);
+        showSuggestions(j.items || []);
+      }catch{
+        showSuggestions([]);
+      }
+    }, 180);
+  });
+
+  document.addEventListener("click", (e) => {
+    if(!suggestBox.contains(e.target) && e.target !== el("q")) showSuggestions([]);
+  });
+
+  // Crunchyroll + Continue watching
+  function crKeyForTitle(title){ return "cr_link:" + title.toLowerCase().trim(); }
+  const LAST_KEY = "last_watch";
+
+  function openCrunchyroll(title){
+    const saved = localStorage.getItem(crKeyForTitle(title));
+    const url = saved && saved.startsWith("http")
+      ? saved
+      : `https://www.crunchyroll.com/search?from=&q=${encodeURIComponent(title)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+    localStorage.setItem(LAST_KEY, JSON.stringify({ title, url, ts: Date.now() }));
+  }
+
+  el("btnCR").addEventListener("click", () => {
+    const title = state.current?.name || el("q").value.trim();
+    if(!title){ setStatus("Cerca prima un titolo."); return; }
+    openCrunchyroll(title);
+    setStatus("Aperto Crunchyroll.");
+  });
+
+  el("btnSetCR").addEventListener("click", () => {
+    const title = state.current?.name || el("q").value.trim();
+    if(!title){ setStatus("Cerca prima un titolo."); return; }
+    const cur = localStorage.getItem(crKeyForTitle(title)) || "";
+    const url = prompt(`Incolla l'URL Crunchyroll serie (/series/...) per:\n${title}`, cur);
+    if(!url) return;
+    localStorage.setItem(crKeyForTitle(title), url.trim());
+    setStatus("Link Crunchyroll salvato.");
+  });
+
+  el("btnContinue").addEventListener("click", () => {
+    const last = localStorage.getItem(LAST_KEY);
+    if(!last){ setStatus("Nessun 'continua a guardare' salvato."); return; }
+    try{
+      const obj = JSON.parse(last);
+      if(obj?.url) window.open(obj.url, "_blank", "noopener,noreferrer");
+      else if(obj?.title) runFullSearch(obj.title);
+      else setStatus("Dato salvato non valido.");
+    }catch{
+      setStatus("Dato salvato non valido.");
+    }
+  });
+
+  async function runFullSearch(query){
+    query = (query || "").trim();
+    if(!query){ setStatus("Scrivi un titolo."); return; }
+
+    setStatus("Carico dettagli...");
+    el("title").textContent = "—";
+    el("overview").textContent = "—";
+    el("type").textContent = "—";
+    el("vote").textContent = "—";
+    el("poster").innerHTML = `<div class="status" style="padding:12px">Caricamento...</div>`;
+    el("videoBox").style.display = "none";
+    el("ytFrame").src = "";
+
+    // reset AI
+    el("aiSummary").textContent = "Premi “Analizza con AI”.";
+    el("aiPros").innerHTML = "";
+    el("aiCons").innerHTML = "";
+    el("aiAvg").textContent = "—";
+    el("aiSources").innerHTML = "";
+
+    el("btnCR").disabled = true;
+    el("btnSetCR").disabled = true;
+
+    try{
+      const tmdb = await apiGet(`/api/tmdb/search?q=${encodeURIComponent(query)}`);
+      if(!tmdb || !tmdb.id){
+        setStatus("Nessun risultato TMDB.");
+        el("poster").innerHTML = `<div class="status" style="padding:12px">Nessun risultato</div>`;
+        return;
+      }
+
+      state.current = tmdb;
+      const title = tmdb.name || query;
+
+      el("title").textContent = title;
+      el("overview").textContent = tmdb.overview || "Nessuna overview disponibile.";
+      el("type").textContent = tmdb.type || "—";
+      el("vote").textContent = (tmdb.vote_average ?? "—");
+
+      const img = tmdbImg(tmdb.poster_path);
+      el("poster").innerHTML = img ? `<img src="${img}" alt="Poster">` : `<div class="status" style="padding:12px">Poster non disponibile</div>`;
+
+      el("btnCR").disabled = false;
+      el("btnSetCR").disabled = false;
+
+      setStatus("Carico trailer...");
+      const yt = await apiGet(`/api/yt/search?q=${encodeURIComponent(title + " trailer")}`);
+      if(yt?.videoId){
+        el("videoBox").style.display = "block";
+        el("ytFrame").src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.videoId)}`;
+      }
+
+      setStatus("Pronto.");
+    }catch(e){
+      setStatus("Errore: " + (e.message || e));
+      el("poster").innerHTML = `<div class="status" style="padding:12px">Errore</div>`;
+    }
+  }
+
+  async function runAI(){
+    const title = state.current?.name || el("q").value.trim();
+    if(!title){ setStatus("Cerca prima un titolo."); return; }
+
+    el("btnAI").disabled = true;
+    setStatus("AI: ricerca web...");
+    el("aiSummary").textContent = "Sto cercando recensioni sul web...";
+    el("aiPros").innerHTML = "";
+    el("aiCons").innerHTML = "";
+    el("aiAvg").textContent = "—";
+    el("aiSources").innerHTML = "";
+
+    try{
+      const out = await apiPost("/api/reviews/ai", { title, targetLang: "it" });
+
+      el("aiSummary").textContent = out.summary || "Nessun riassunto.";
+      el("aiAvg").textContent = (out.avg ?? "—");
+
+      const pros = Array.isArray(out.pros) ? out.pros : [];
+      const cons = Array.isArray(out.cons) ? out.cons : [];
+      el("aiPros").innerHTML = pros.length ? pros.map(x => `<li>${escapeHtml(x)}</li>`).join("") : "<li>—</li>";
+      el("aiCons").innerHTML = cons.length ? cons.map(x => `<li>${escapeHtml(x)}</li>`).join("") : "<li>—</li>";
+
+      const sources = Array.isArray(out.sources) ? out.sources : [];
+      if(sources.length){
+        el("aiSources").innerHTML =
+          "<div style='margin-bottom:6px; font-weight:850; font-size:12px; color:rgba(255,255,255,.80)'>Fonti</div>" +
+          sources.slice(0, 6).map(u => `<div><a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(u)}</a></div>`).join("");
+      } else {
+        el("aiSources").innerHTML = "<div class='status'>Nessuna fonte trovata. Riprova con una query diversa.</div>";
+      }
+
+      setStatus("Analisi completata.");
+    }catch(e){
+      el("aiSummary").textContent = "Errore durante l’analisi.";
+      setStatus("Errore AI.");
+    }finally{
+      el("btnAI").disabled = false;
+    }
+  }
+
+  el("btnSearch").addEventListener("click", () => runFullSearch(el("q").value.trim()));
+  el("btnAI").addEventListener("click", () => runAI());
+  el("q").addEventListener("keydown", (e) => {
+    if(e.key === "Enter"){ e.preventDefault(); showSuggestions([]); runFullSearch(el("q").value.trim()); }
+  });
+</script>
+</body>
+</html>
