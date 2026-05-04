@@ -1,326 +1,414 @@
-const JIKAN_BASE = "https://api.jikan.moe/v4"; // [web:366]
+const el = (id) => document.getElementById(id);
 
-const elQ = document.getElementById("q");
-const elLimit = document.getElementById("limit");
-const elSfw = document.getElementById("sfw");
-const elGrid = document.getElementById("grid");
-const elStatus = document.getElementById("status");
-const elMetaLine = document.getElementById("metaLine");
-document.getElementById("srv").textContent = location.origin;
-
-const dlg = document.getElementById("dlg");
-const dlgTitle = document.getElementById("dlgTitle");
-const dlgBody = document.getElementById("dlgBody");
-document.getElementById("dlgClose").addEventListener("click", () => dlg.close());
-
-const cacheDetails = new Map();
+const state = {
+  current: null,
+  selectedSeason: 1
+};
+const LAST_QUERY_KEY = "last_query";
 
 function esc(s){
   return String(s ?? "").replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
   }[c]));
 }
-function setStatus(msg, bad=false){
-  elStatus.textContent = msg || "";
-  elStatus.classList.toggle("bad", !!bad);
+function setStatus(msg){ el("status").textContent = msg || ""; }
+
+function tmdbImg(p){ return p ? `https://image.tmdb.org/t/p/w500${p}` : null; }
+function tmdbStill(p){ return p ? `https://image.tmdb.org/t/p/w500${p}` : null; }
+
+async function apiGet(url){
+  const r = await fetch(url);
+  const data = await r.json().catch(()=> ({}));
+  if(!r.ok){
+    const msg =
+      data?.error ||
+      data?.status_message ||
+      (typeof data === "string" ? data : null) ||
+      ("HTTP " + r.status);
+
+    const err = new Error(msg);
+    err.status = r.status;
+    err.details = data?.details || data;
+    throw err;
+  }
+  return data;
+}
+function fmtNum(n){
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  return x.toLocaleString("it-IT");
 }
 
-function pickTitle(d){ return d?.title_english || d?.title || d?.titles?.[0]?.title || "Senza titolo"; }
-function pickImage(d){
-  return d?.images?.jpg?.large_image_url || d?.images?.jpg?.image_url ||
-         d?.images?.webp?.large_image_url || d?.images?.webp?.image_url || "";
+/* FX toggle */
+const fxToggle = el("fx");
+function setFx(on){
+  document.documentElement.dataset.fx = on ? "on" : "off";
+  localStorage.setItem("fx", on ? "1" : "0");
+}
+if (fxToggle){
+  const saved = localStorage.getItem("fx");
+  const on = saved == null ? true : saved === "1";
+  fxToggle.checked = on;
+  setFx(on);
+  fxToggle.addEventListener("change", () => setFx(fxToggle.checked));
 }
 
-async function fetchJson(url, opts){
-  const r = await fetch(url, opts);
-  const j = await r.json().catch(() => ({}));
-  if(!r.ok) throw new Error(j?.error || ("HTTP " + r.status));
-  return j;
+/* 3D tilt */
+const posterEl = el("poster");
+if (posterEl){
+  posterEl.addEventListener("mousemove", (e) => {
+    if(document.documentElement.dataset.fx === "off") return;
+    const r = posterEl.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width;
+    const py = (e.clientY - r.top) / r.height;
+    const rx = (py - 0.5) * -10;
+    const ry = (px - 0.5) * 10;
+    posterEl.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`;
+  });
+  posterEl.addEventListener("mouseleave", () => { posterEl.style.transform = ""; });
 }
 
-async function jikanSearch(q, limit, sfw){
-  const p = new URLSearchParams({ q, limit: String(limit) });
-  if (sfw) p.set("sfw","true");
-  return fetchJson(JIKAN_BASE + "/anime?" + p.toString());
-}
+/* suggestions */
+const suggestBox = el("suggest");
+let suggestTimer = null;
 
-async function jikanFull(malId){
-  if (cacheDetails.has(malId)) return cacheDetails.get(malId);
-  const j = await fetchJson(`${JIKAN_BASE}/anime/${encodeURIComponent(malId)}/full`);
-  cacheDetails.set(malId, j?.data);
-  return j?.data;
-}
+function showSuggestions(items){
+  if(!items?.length){
+    suggestBox.style.display = "none";
+    suggestBox.innerHTML = "";
+    return;
+  }
+  suggestBox.style.display = "block";
+  suggestBox.innerHTML = items.map((it, idx) => {
+    const img = tmdbImg(it.poster_path);
+    return `
+      <div class="item" data-idx="${idx}">
+        <div class="mini">
+          ${img ? `<img class="miniPoster" src="${img}" alt="">` : `<div class="miniPoster"></div>`}
+          <div style="min-width:0">
+            <div style="font-weight:950; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(it.name)}</div>
+            <div style="font-size:12px; color:rgba(255,255,255,.62); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc((it.overview || "Nessuna descrizione.").slice(0, 90))}</div>
+          </div>
+        </div>
+        <div class="tag">${it.type === "tv" ? "TV" : it.type === "movie" ? "Film" : esc(it.type)}</div>
+      </div>
+    `;
+  }).join("");
 
-async function jikanReviews(malId, page=1){
-  const url = `${JIKAN_BASE}/anime/${encodeURIComponent(malId)}/reviews?` +
-    new URLSearchParams({ page: String(page) }).toString();
-  return fetchJson(url);
-}
-
-async function ytEmbedForTitle(title){
-  const j = await fetchJson("/api/yt/search?" + new URLSearchParams({ q: `${title} official trailer` }).toString());
-  const vid = j?.videoId ?? null;
-  return vid ? `https://www.youtube.com/embed/${encodeURIComponent(vid)}` : null;
-}
-
-async function aiReviews(reviews){
-  return fetchJson("/api/reviews/ai", {
-    method: "POST",
-    headers: { "Content-Type":"application/json" },
-    body: JSON.stringify({ reviews, targetLang: "it" })
+  [...suggestBox.querySelectorAll(".item")].forEach(node => {
+    node.addEventListener("click", async () => {
+      const picked = items[Number(node.dataset.idx)];
+      suggestBox.style.display = "none";
+      el("q").value = picked.name;
+      await runFullSearch(picked.name);
+    });
   });
 }
 
-function metaPills(a){
-  const pills = [];
-  if (a?.type) pills.push(`<span class="pill">${esc(a.type)}</span>`);
-  const year = a?.year || a?.aired?.prop?.from?.year;
-  if (year) pills.push(`<span class="pill">${esc(year)}</span>`);
-  if (a?.score != null) pills.push(`<span class="pill good">★ ${esc(a.score)}</span>`);
-  return pills.join("");
+el("q").addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  const q = el("q").value.trim();
+  if(q.length < 2){ showSuggestions([]); return; }
+  suggestTimer = setTimeout(async () => {
+    try{
+      const j = await apiGet(`/api/tmdb/autocomplete?q=${encodeURIComponent(q)}`);
+      showSuggestions(j.items || []);
+    }catch{
+      showSuggestions([]);
+    }
+  }, 160);
+});
+document.addEventListener("click", (e) => {
+  if(!suggestBox.contains(e.target) && e.target !== el("q")) showSuggestions([]);
+});
+
+/* Crunchyroll */
+function crKeyForTitle(title){ return "cr_link:" + title.toLowerCase().trim(); }
+const LAST_KEY = "last_watch";
+function openCrunchyroll(title){
+  const saved = localStorage.getItem(crKeyForTitle(title));
+  const url = saved && saved.startsWith("http")
+    ? saved
+    : `https://www.crunchyroll.com/search?from=&q=${encodeURIComponent(title)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+  localStorage.setItem(LAST_KEY, JSON.stringify({ title, url, ts: Date.now() }));
 }
-
-function makeCard(a){
-  const div = document.createElement("div");
-  div.className = "card";
-  div.innerHTML = `
-    <img class="poster" src="${esc(pickImage(a))}" alt="">
-    <div class="cardBody">
-      <div class="cardTitle">${esc(pickTitle(a))}</div>
-      <div class="cardMeta">${metaPills(a)}</div>
-      <button class="btn primary">Dettagli</button>
-    </div>
-  `;
-  div.querySelector("button").addEventListener("click", () => openDetails(a.mal_id));
-  return div;
-}
-
-async function runSearch(){
-  const q = elQ.value.trim();
-  if(!q){ setStatus("Scrivi una query.", true); return; }
-
-  setStatus("Caricamento…");
-  elGrid.innerHTML = "";
-  elMetaLine.textContent = "";
-
+el("btnCR").addEventListener("click", () => {
+  const title = state.current?.name || el("q").value.trim();
+  if(!title) return setStatus("Cerca prima un titolo.");
+  openCrunchyroll(title);
+  setStatus("Aperto Crunchyroll.");
+});
+el("btnSetCR").addEventListener("click", () => {
+  const title = state.current?.name || el("q").value.trim();
+  if(!title) return setStatus("Cerca prima un titolo.");
+  const cur = localStorage.getItem(crKeyForTitle(title)) || "";
+  const url = prompt(`Incolla l'URL Crunchyroll serie (/series/...) per:\n${title}`, cur);
+  if(!url) return;
+  localStorage.setItem(crKeyForTitle(title), url.trim());
+  setStatus("Link Crunchyroll salvato.");
+});
+el("btnContinue").addEventListener("click", () => {
+  const last = localStorage.getItem(LAST_KEY);
+  if(!last) return setStatus("Nessun 'continua a guardare' salvato.");
   try{
-    const limit = Number(elLimit.value);
-    const sfw = (elSfw.value === "true");
-    const j = await jikanSearch(q, limit, sfw);
-    const list = j?.data || [];
-    list.forEach(a => elGrid.appendChild(makeCard(a)));
+    const obj = JSON.parse(last);
+    if(obj?.url) window.open(obj.url, "_blank", "noopener,noreferrer");
+    else if(obj?.title) runFullSearch(obj.title);
+    else setStatus("Dato salvato non valido.");
+  }catch{
+    setStatus("Dato salvato non valido.");
+  }
+});
 
-    setStatus(list.length ? "Ok." : "Nessun risultato.");
-    elMetaLine.textContent = `Risultati: ${list.length}`;
+function resetStats(){
+  el("tmdbScore").textContent = "—";
+  el("ringSource").textContent = "/10";
+  el("statsRating").innerHTML = "";
+  el("statsMeta").innerHTML = "";
+  el("year").textContent = "—";
+  document.querySelector(".ring")?.style.setProperty("--score-pct", "0%");
+  document.querySelector(".ring")?.style.removeProperty("--ring-color");
+}
+function renderStats(details){
+  const imdbRating = Number(details?.imdb_rating);
+  const tmdbScore = Number(details?.vote_average);
+  const hasImdb = Number.isFinite(imdbRating) && imdbRating > 0;
+  const score = hasImdb ? imdbRating : tmdbScore;
+
+  el("tmdbScore").textContent = Number.isFinite(score) && score > 0 ? score.toFixed(1) : "—";
+  el("year").textContent = esc(details?.year || "—");
+
+  const ringEl = document.querySelector(".ratingRing");
+  if (ringEl) ringEl.title = hasImdb ? "Voto IMDb" : "Voto TMDB";
+  el("ringSource").textContent = hasImdb ? "IMDb" : "/10";
+
+  const pct = Number.isFinite(score) && score > 0 ? (score / 10 * 100).toFixed(1) + "%" : "0%";
+  const ringColor = score >= 7.5 ? "#39c98a" : score >= 6.0 ? "#f5c518" : score > 0 ? "#d35656" : "var(--accent)";
+  document.querySelector(".ring")?.style.setProperty("--score-pct", pct);
+  document.querySelector(".ring")?.style.setProperty("--ring-color", ringColor);
+
+  const ratingItems = hasImdb ? [
+    `Rating IMDb: ${imdbRating.toFixed(1)} / 10`,
+    `Voti IMDb: ${esc(details.imdb_votes || "—")}`,
+    `Popolarità TMDB: ${fmtNum(details?.popularity)}`
+  ] : [
+    `Voto TMDB: ${Number.isFinite(tmdbScore) && tmdbScore > 0 ? tmdbScore.toFixed(1) + " / 10" : "—"}`,
+    `Numero voti: ${fmtNum(details?.vote_count)}`,
+    `Popolarità: ${fmtNum(details?.popularity)}`
+  ];
+
+  const metaItems = [
+    `Generi: ${details?.genres?.length ? details.genres.join(", ") : "—"}`,
+    details?.type === "tv"
+      ? `Stagioni: ${fmtNum(details?.number_of_seasons)} · Episodi: ${fmtNum(details?.number_of_episodes)}`
+      : `Durata: ${details?.runtime ? `${fmtNum(details.runtime)} min` : "—"}`
+  ];
+
+  el("statsRating").innerHTML = ratingItems.map(x => `<li>${esc(x)}</li>`).join("");
+  el("statsMeta").innerHTML = metaItems.map(x => `<li>${esc(x)}</li>`).join("");
+}
+function renderSeasonTabs(totalSeasons){
+  const box = el("seasonTabs");
+  if(!box) return;
+  if(!Number.isFinite(totalSeasons) || totalSeasons < 1){
+    box.innerHTML = "";
+    return;
+  }
+  const max = Math.min(totalSeasons, 20);
+  const html = Array.from({ length: max }, (_, i) => i + 1).map(s => {
+    const cls = s === state.selectedSeason ? "seasonBtn active" : "seasonBtn";
+    return `<button class="${cls}" data-season="${s}">S${s}</button>`;
+  }).join("");
+  box.innerHTML = html;
+  [...box.querySelectorAll(".seasonBtn")].forEach(node => {
+    node.addEventListener("click", () => {
+      const season = Number(node.dataset.season || 1);
+      if (!state.current?.id || !state.current?.type || state.current.type !== "tv") return;
+      if (season === state.selectedSeason) return;
+      state.selectedSeason = season;
+      renderSeasonTabs(totalSeasons);
+      loadSeasonEpisodes(state.current.id, season);
+    });
+  });
+}
+
+async function loadSeasonEpisodes(tvId, season){
+  try{
+    setStatus(`Carico episodi S${season}...`);
+    const epRes = await apiGet(`/api/tmdb/episodes?id=${encodeURIComponent(tvId)}&season=${encodeURIComponent(season)}`);
+
+    let imdbRatings = {};
+    const imdbId = state.current?.imdb_id;
+    if (imdbId) {
+      try {
+        const omdb = await apiGet(`/api/omdb/season-ratings?imdbId=${encodeURIComponent(imdbId)}&season=${encodeURIComponent(season)}`);
+        imdbRatings = omdb?.ratings || {};
+      } catch {
+        imdbRatings = {};
+      }
+    }
+
+    renderEpisodes(epRes.episodes || [], "Nessun episodio trovato.", imdbRatings);
+    setStatus("Pronto.");
   }catch(e){
-    setStatus("Errore: " + e.message, true);
+    const d = e.details || {};
+    const tmdbMsg = d?.status_message || d?.details?.status_message;
+    renderEpisodes([], `Episodi: ${tmdbMsg || (e.message + " (HTTP " + (e.status || "?") + ")")}`);
   }
 }
 
-async function openDetails(malId){
-  dlgTitle.textContent = "Dettagli";
-  dlgBody.innerHTML = `<div class="meta">Caricamento…</div>`;
-  dlg.showModal();
-
-  try{
-    const d = await jikanFull(malId);
-    const title = pickTitle(d);
-    const img = pickImage(d);
-    const synopsis = (d?.synopsis || "").trim();
-
-    let trailerEmbed = d?.trailer?.embed_url || null;
-    let trailerNote = trailerEmbed ? "Trailer da Jikan." : "Cerco trailer (YouTube API)…";
-    if(!trailerEmbed){
-      trailerEmbed = await ytEmbedForTitle(title);
-      trailerNote = trailerEmbed ? "Trailer trovato." : "Trailer non trovato.";
-    }
-
-    dlgTitle.textContent = title;
-    dlgBody.innerHTML = `
-      <div>
-        <img class="sideImg" src="${esc(img)}" alt="">
-        <div class="meta" style="margin-top:10px;">${esc(trailerNote)}</div>
-      </div>
-
-      <div>
-        <h2 class="hTitle">${esc(title)}</h2>
-
-        ${trailerEmbed
-          ? `<iframe class="yt" src="${esc(trailerEmbed)}"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowfullscreen></iframe>`
-          : `<div class="meta">Nessun trailer disponibile.</div>`
-        }
-
-        <div class="syn">${esc(synopsis || "Sinossi non disponibile.")}</div>
-
-        <div class="section">
-          <div class="sectionHead">
-            <div style="font-weight:850;">Recensioni</div>
-            <div class="row">
-              <button id="btnMore" class="btn">Carica altre</button>
-              <button id="btnAI" class="btn primary">AI: Pro/Contro + Riassunto</button>
-            </div>
+/* Episodi */
+function renderEpisodes(list, msg, imdbRatings = {}){
+  const box = el("episodesGrid");
+  if(!box) return;
+  if(!list?.length){
+    box.innerHTML = msg ? `<div class="status" style="margin-top:6px">${esc(msg)}</div>` : "";
+    return;
+  }
+  box.innerHTML = list.map(ep => {
+    const img = tmdbStill(ep.still_path);
+    const imdbScore = imdbRatings[String(ep.episode_number)] || null;
+    const tmdbScore = ep.vote_average != null && Number(ep.vote_average) > 0 ? Number(ep.vote_average).toFixed(1) : null;
+    const score = imdbScore || tmdbScore || "—";
+    const scoreClass = imdbScore ? "epScore imdb" : "epScore";
+    const scoreSource = imdbScore ? "IMDb" : (tmdbScore ? "TMDB" : "");
+    const name = ep.name || `Ep ${ep.episode_number}`;
+    const raw = ep.overview || "Nessun riassunto disponibile.";
+    const ov = raw.length > 220 ? raw.slice(0,220) + "…" : raw;
+    return `
+      <article class="epCard">
+        ${img ? `<img class="epImg" src="${esc(img)}" alt="">` : `<div class="epImg"></div>`}
+        <div class="epBody">
+          <div class="epMeta">
+            <div class="epNum">S${ep.season_number} · E${ep.episode_number}</div>
+            <div class="${scoreClass}">${esc(score)}${score !== "—" ? " / 10" : ""} <span class="epScoreSource">${esc(scoreSource)}</span></div>
           </div>
-
-          <div id="aiHost"></div>
-
-          <div class="meta" id="revStatus" style="margin-top:10px;">Caricamento…</div>
-          <div id="revList"></div>
+          <div class="epName">${esc(name)}</div>
+          <div class="epOverview">${esc(ov)}</div>
         </div>
-      </div>
+      </article>
     `;
+  }).join("");
+}
 
-    let page = 1;
-    let loaded = []; // [{score, text}]
-    const revStatus = document.getElementById("revStatus");
-    const revList = document.getElementById("revList");
-    const btnMore = document.getElementById("btnMore");
-    const btnAI = document.getElementById("btnAI");
-    const aiHost = document.getElementById("aiHost");
+/* main search */
+async function runFullSearch(query){
+  query = (query || "").trim();
+  if(!query) return setStatus("Scrivi un titolo.");
+  localStorage.setItem(LAST_QUERY_KEY, query);
 
-    function renderReview(r){
-      const user = r?.user?.username || "utente";
-      const score = (r?.score === 0 || r?.score) ? Number(r.score) : null;
-      const date = r?.date || "";
-      const content = (r?.review || r?.content || "").toString().trim();
+  setStatus("Carico dettagli...");
+  el("btnCR").disabled = true;
+  el("btnSetCR").disabled = true;
+  el("btnTMDB").disabled = true;
 
-      const div = document.createElement("div");
-      div.className = "review";
-      div.innerHTML = `
-        <div class="reviewHead">
-          <div><b>${esc(user)}</b></div>
-          <div class="reviewMeta">
-            ${score != null ? `<span class="badgeScore">★ ${esc(score)}</span>` : ``}
-            <span>${esc(date)}</span>
-          </div>
-        </div>
-        <div class="meta" style="margin-top:8px; color:#d8dcef;">${esc(content || "Testo non disponibile.")}</div>
-      `;
-      revList.appendChild(div);
+  el("title").textContent = "—";
+  el("overview").textContent = "—";
+  el("type").textContent = "—";
+  el("year").textContent = "—";
+  posterEl.innerHTML = `<div class="posterPh">Caricamento...</div>`;
 
-      if (content) loaded.push({ score, text: content });
+  el("videoBox").style.display = "none";
+  el("ytFrame").src = "";
+
+  resetStats();
+  renderEpisodes([], "");
+  renderSeasonTabs(0);
+
+  try{
+    const tmdb = await apiGet(`/api/tmdb/search?q=${encodeURIComponent(query)}`);
+    if(!tmdb || !tmdb.id){
+      setStatus("Nessun risultato TMDB.");
+      posterEl.innerHTML = `<div class="posterPh">Nessun risultato.</div>`;
+      resetStats();
+      renderEpisodes([], "");
+      return;
     }
 
-    async function loadReviews(p){
-      revStatus.textContent = "Caricamento…";
-      try{
-        const j = await jikanReviews(malId, p);
-        const list = j?.data || [];
+    state.current = tmdb;
+    const title = tmdb.name || query;
 
-        if (p === 1){
-          revList.innerHTML = "";
-          loaded = [];
-          aiHost.innerHTML = "";
-        }
+    el("title").textContent = title;
+    el("overview").textContent = tmdb.overview || "Nessuna overview disponibile.";
+    el("type").textContent = tmdb.type === "tv" ? "TV" : tmdb.type === "movie" ? "Film" : (tmdb.type || "—");
+    el("btnTMDB").disabled = false;
 
-        if (!list.length){
-          revStatus.textContent = (p === 1) ? "Nessuna recensione." : "Fine recensioni.";
-          btnMore.disabled = true;
-          return;
-        }
+    const img = tmdbImg(tmdb.poster_path);
+    posterEl.innerHTML = img ? `<img src="${img}" alt="Poster">` : `<div class="posterPh">Poster non disponibile.</div>`;
 
-        revStatus.textContent = `Pagina ${p} • ${list.length} recensioni`;
-        list.forEach(renderReview);
-        btnMore.disabled = !j?.pagination?.has_next_page;
-      }catch(e){
-        revStatus.textContent = "Errore recensioni: " + e.message;
+    el("btnCR").disabled = false;
+    el("btnSetCR").disabled = false;
+
+    try {
+      const details = await apiGet(`/api/tmdb/details?id=${encodeURIComponent(tmdb.id)}&type=${encodeURIComponent(tmdb.type)}`);
+      state.current = { ...state.current, imdb_id: details?.imdb_id || "" };
+      renderStats(details);
+      if (tmdb.type === "tv") {
+        state.selectedSeason = 1;
+        renderSeasonTabs(Number(details?.number_of_seasons) || 1);
+      } else {
+        renderSeasonTabs(0);
       }
+    } catch {
+      resetStats();
+      renderSeasonTabs(0);
     }
 
-    btnMore.addEventListener("click", async () => {
-      page += 1;
-      await loadReviews(page);
-    });
+    if (tmdb.type === "tv"){
+      await loadSeasonEpisodes(tmdb.id, state.selectedSeason);
+    } else {
+      renderSeasonTabs(0);
+      renderEpisodes([], "Episodi disponibili solo per serie TV.");
+    }
 
-    btnAI.addEventListener("click", async () => {
-      try{
-        btnAI.disabled = true;
-        aiHost.innerHTML = `
-          <div class="aiCard">
-            <div class="aiRow">
-              <div class="aiH">Riassunto recensioni</div>
-              <div class="aiBadges">
-                <span class="badge">Loading…</span>
-              </div>
-            </div>
-            <div class="aiP">Elaborazione AI…</div>
-          </div>
-        `;
+    setStatus("Carico trailer...");
+    const yt = await apiGet(`/api/yt/search?q=${encodeURIComponent(title + " trailer")}`);
+    if(yt?.videoId){
+      el("videoBox").style.display = "block";
+      el("ytFrame").src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.videoId)}`;
+    }
 
-        if (!loaded.length){
-          aiHost.querySelector(".aiP").textContent = "Non ci sono recensioni da analizzare.";
-          return;
-        }
-
-        const out = await aiReviews(loaded.slice(0, 35));
-        const summary = String(out?.summary || "").trim();
-        const pros = Array.isArray(out?.pros) ? out.pros.map(String) : [];
-        const cons = Array.isArray(out?.cons) ? out.cons.map(String) : [];
-        const avg = (typeof out?.avg === "number") ? out.avg : null;
-
-        aiHost.innerHTML = `
-          <div class="aiGrid">
-            <div class="aiCard">
-              <div class="aiRow">
-                <div class="aiH">Riassunto recensioni</div>
-                <div class="aiBadges">
-                  ${avg != null ? `<span class="badge good">Media review: ${avg.toFixed(2)}</span>` : ``}
-                  <span class="badge">Reviews usate: ${Math.min(loaded.length, 35)}</span>
-                </div>
-              </div>
-              <div class="aiP">${esc(summary || "Nessun riassunto.")}</div>
-            </div>
-
-            ${(pros.length || cons.length) ? `
-              <div class="aiCard">
-                <div class="aiRow">
-                  <div class="aiH">Pro / Contro (super corto)</div>
-                </div>
-
-                <div class="cols">
-                  <div>
-                    <div class="khead">Pro</div>
-                    ${pros.length ? `<ul class="klist">${pros.slice(0,6).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>` : `<div class="meta">Nessuno.</div>`}
-                  </div>
-
-                  <div>
-                    <div class="khead">Contro</div>
-                    ${cons.length ? `<ul class="klist">${cons.slice(0,6).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>` : `<div class="meta">Nessuno.</div>`}
-                  </div>
-                </div>
-              </div>
-            ` : ``}
-          </div>
-        `;
-
-        aiHost.scrollIntoView({ behavior: "smooth", block: "start" });
-      }catch(e){
-        aiHost.innerHTML = `<div class="aiCard"><div class="aiH">AI</div><div class="aiP">Errore: ${esc(e.message)}</div></div>`;
-      }finally{
-        btnAI.disabled = false;
-      }
-    });
-
-    await loadReviews(1);
-
+    setStatus("Pronto.");
   }catch(e){
-    dlgBody.innerHTML = `<div class="meta">Errore: ${esc(e.message)}</div>`;
+    setStatus("Errore: " + (e.message || e));
+    el("btnTMDB").disabled = true;
+    posterEl.innerHTML = `<div class="posterPh">Errore.</div>`;
+    resetStats();
+    renderEpisodes([], "");
   }
 }
 
-// wiring
-document.getElementById("btnSearch").addEventListener("click", runSearch);
-document.getElementById("btnClear").addEventListener("click", () => {
-  elQ.value = "";
-  elGrid.innerHTML = "";
-  setStatus("Pronto.");
-  elMetaLine.textContent = "";
+el("btnSearch").addEventListener("click", () => runFullSearch(el("q").value.trim()));
+el("btnTMDB").addEventListener("click", () => {
+  if (!state.current?.id || !state.current?.type) return;
+  const url = `https://www.themoviedb.org/${state.current.type}/${state.current.id}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+});
+el("q").addEventListener("keydown", (e) => {
+  if(e.key === "Enter"){
+    e.preventDefault();
+    showSuggestions([]);
+    runFullSearch(el("q").value.trim());
+  }
 });
 
-let t = null;
-elQ.addEventListener("input", () => {
-  clearTimeout(t);
-  t = setTimeout(() => { if (elQ.value.trim().length >= 3) runSearch(); }, 350);
-});
-elQ.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+/* TMDB ping: se fallisce sai subito che è chiave/permessi [web:230][web:233] */
+(async () => {
+  try{
+    const ping = await apiGet("/api/tmdb/ping");
+    if (!ping?.ok) throw new Error("TMDB ping failed");
+  }catch(e){
+    const msg = e?.details?.status_message || e?.message || "TMDB non raggiungibile";
+    setStatus("TMDB: " + msg);
+  }
+})();
+
+const lastQuery = localStorage.getItem(LAST_QUERY_KEY);
+if (lastQuery) {
+  el("q").value = lastQuery;
+  runFullSearch(lastQuery);
+}
+
+resetStats();
+renderEpisodes([], "");
